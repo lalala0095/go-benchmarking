@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (docs/04 §3) stored as RGB triplets so Tailwind can apply alpha. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: 14 17 22;
+  --surface: 22 27 34;
+  --surface-2: 28 34 43;
+  --border: 42 49 60;
+  --text: 230 234 240;
+  --muted: 139 149 165;
+  --go: 63 182 224;
+  --py: 242 193 78;
+  --go-fg: 63 182 224;
+  --py-fg: 242 193 78;
+  --better: 63 185 80;
+  --worse: 248 81 73;
+  --warn: 210 153 34;
+  --model: 163 113 247;
+  --tool: 219 97 162;
+  --session: 139 148 158;
+  --overhead: 240 136 62;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: 247 248 250;
+  --surface: 255 255 255;
+  --surface-2: 240 242 245;
+  --border: 227 230 235;
+  --text: 20 23 28;
+  --muted: 91 100 114;
+  --go: 11 127 171;
+  --py: 184 134 11;
+  /* darker text variants keep WCAG AA (≥4.5:1) on white */
+  --go-fg: 10 110 149;
+  --py-fg: 125 90 0;
+  --better: 26 127 55;
+  --worse: 201 60 55;
+  --warn: 154 103 0;
+  --model: 130 80 223;
+  --tool: 191 57 137;
+  --session: 110 119 129;
+  --overhead: 188 76 0;
+}
+
+@layer base {
+  html { background: rgb(var(--bg)); }
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .num, .font-mono, code, kbd, pre { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid rgb(var(--go)); outline-offset: 2px; border-radius: 4px; }
+  ::selection { background: rgb(var(--go) / 0.3); }
+}
+
+@layer components {
+  .card { @apply bg-surface border border-border rounded-card; }
+  .num { @apply font-mono; font-variant-numeric: tabular-nums; }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-border bg-surface2 px-3 py-1.5 text-sm font-medium
+      text-text hover:border-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-primary { @apply btn border-go/60 bg-go/15 hover:bg-go/25; }
+  .btn-ghost { @apply inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted hover:text-text hover:bg-surface2 disabled:opacity-50; }
+  .btn-danger { @apply btn border-worse/60 text-worse; }
+  .input {
+    @apply rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm text-text placeholder:text-muted
+      focus:border-go focus:outline-none;
+  }
+  .label { @apply text-xs font-medium uppercase tracking-wide text-muted; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full border border-border bg-surface2 px-2 py-0.5 text-xs; }
+  .skeleton { @apply animate-pulse rounded-md bg-surface2; }
+  /* :where() keeps specificity at zero so utilities like text-right still win. */
+  :where(.table-dense) :where(th, td) { @apply px-2 py-1.5 border-b border-border/60; }
+  :where(.table-dense) :where(th) { text-align: left; }
+  :where(.table-dense) :where(thead th) { @apply text-xs font-medium uppercase tracking-wide text-muted border-border; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

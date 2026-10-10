@@ -28,6 +28,25 @@ On the Ubuntu deployment server, run `make setup-host` once, then `make up-bench
 | `deploy/k8s/` | k3s manifests (Kustomize) and learning labs |
 | `scripts/` | Ubuntu setup, quiet mode, CPU layout |
 
+## Status
+
+The stack is built and integration-tested on the Mac dev machine (Docker Desktop, arm64):
+- **Parity:** the Go/Python parity suite passes 218 tests, plus the timing audit (6/6) when enabled.
+- **Unit tests:** all green.
+- **Smoke benchmark:** `make bench-smoke` passes.
+
+Official numbers come from the Ubuntu 24.04 deployment server ([docs/08](docs/08-UBUNTU-SETUP.md)).
+
+First smoke numbers, Mac dev box only (not official). These are 5 s runs with 1 rep and no CPU pinning:
+
+| Scenario | Go | FastAPI |
+|---|---|---|
+| `ping` RPS (p99) | 158k (1.7 ms) | 25k (5.1 ms) |
+| `db-read` RPS (p99) | 53k (2.4 ms) | 12.9k (7.1 ms) |
+| `chat-mock` RPS at c=50 (p99) | 40 (1.19 s) | 31 (1.37 s) |
+| Chat overhead (RAG tool call) | ~1 ms | ~10 ms |
+| Idle memory / image size | 35 MB / 40 MB | 311 MB / 488 MB |
+
 ## Planning docs
 
 | # | Doc | What's inside |

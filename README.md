@@ -61,13 +61,13 @@ First smoke numbers, Mac dev box only (not official). These are 5 s runs with 1 
 | 08 | [Ubuntu Setup](docs/08-UBUNTU-SETUP.md) | Docker Engine + k3s install, quiet mode, CPU pinning |
 | 09 | [RAG](docs/09-RAG.md) | Hybrid RAG: Gemini embeddings + pgvector + full-text (RRF), chunking spec, tool |
 
-## Services (planned)
+## Services
 
 | Service | Host port |
 |---|---|
 | dashboard | http://localhost:3000 |
 | go-server | http://localhost:8081 |
 | fastapi-server | http://localhost:8082 |
-| postgres | localhost:5432 |
+| postgres | localhost:5433 (`PG_HOST_PORT`; inside Docker it is `postgres:5432`) |
 
 In Kubernetes mode, run `make k8s-open` and open the dashboard at http://localhost:8080. The servers are reached in-cluster, or via `kubectl port-forward`.

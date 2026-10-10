@@ -74,7 +74,11 @@ To stop k3s from starting at boot when you're not using it: `sudo systemctl disa
 ### 2.4 Optional editor tooling
 Go, Python, and Node are **not** needed on the host, because everything builds in containers. For editor support (gopls, pyright), `sudo snap install go --classic` and `uv` are optional.
 
-### 2.5 Checks
+### 2.5 Port conflicts
+
+The Compose stack publishes only on `127.0.0.1`: dashboard `3000`, go-server `8081`, fastapi-server `8082`, Postgres **`5433`**. Postgres uses 5433 rather than 5432 because Ubuntu machines often already run a native PostgreSQL on 5432. If any port is taken (`sudo ss -ltnp | grep -E ':(3000|8081|8082|5433)'`), override it in `.env` with `DASH_HOST_PORT`, `GO_HOST_PORT`, `PY_HOST_PORT` or `PG_HOST_PORT`. Containers always talk to each other on their internal ports, so overriding a host port changes nothing else.
+
+### 2.6 Checks
 ```bash
 stat -fc %T /sys/fs/cgroup        # must print cgroup2fs (Ubuntu 24.04 default). The servers read their own cgroup stats.
 docker info | grep -E "Cgroup (Driver|Version)"   # systemd / 2

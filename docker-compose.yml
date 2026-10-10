@@ -45,7 +45,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:${PG_HOST_PORT:-5433}:5432"]   # host side only, for psql debugging; containers use postgres:5432
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bench} -d dashboard"]
       interval: 3s
@@ -62,7 +62,7 @@ services:
     environment:
       <<: *server-env
       DATABASE_URL: postgres://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/go_app?sslmode=disable
-    ports: ["127.0.0.1:8081:8080"]
+    ports: ["127.0.0.1:${GO_HOST_PORT:-8081}:8080"]
     healthcheck:
       test: ["CMD", "/app/server", "healthcheck"]
       interval: 3s
@@ -77,7 +77,7 @@ services:
       <<: *server-env
       PY_WORKERS: ${PY_WORKERS:-2}
       DATABASE_URL: postgresql://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/py_app
-    ports: ["127.0.0.1:8082:8080"]
+    ports: ["127.0.0.1:${PY_HOST_PORT:-8082}:8080"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).status == 200 else 1)"]
       interval: 3s
@@ -108,7 +108,7 @@ services:
       - ./reports:/reports
     # isOtherStackActive(): probes the k3s API server (host:6443) from inside the container.
     extra_hosts: ["host.docker.internal:host-gateway"]
-    ports: ["127.0.0.1:3000:3000"]
+    ports: ["127.0.0.1:${DASH_HOST_PORT:-3000}:3000"]
     ulimits:
       nofile: { soft: 65535, hard: 65535 }
     healthcheck:

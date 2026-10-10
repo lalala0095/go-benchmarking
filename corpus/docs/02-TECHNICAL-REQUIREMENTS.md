@@ -108,7 +108,7 @@ x-server-limits: &server-limits
       limits: { cpus: "${SERVER_CPUS:-2}", memory: "${SERVER_MEM:-1g}" }
 
 services:
-  postgres:       { image: "pgvector/pgvector:pg17", cpus: 2, mem: 2g, ports: ["127.0.0.1:5432:5432"] }
+  postgres:       { image: "pgvector/pgvector:pg17", cpus: 2, mem: 2g, ports: ["127.0.0.1:${PG_HOST_PORT:-5433}:5432"] }
   go-server:      { <<: *server-limits, ports: ["127.0.0.1:8081:8080"] }
   fastapi-server: { <<: *server-limits, ports: ["127.0.0.1:8082:8080"] }
   dashboard:      { cpus: 4, mem: 2g, ports: ["127.0.0.1:3000:3000"],

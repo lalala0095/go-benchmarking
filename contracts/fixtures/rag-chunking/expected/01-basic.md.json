@@ -1,0 +1,22 @@
+{
+  "source": "01-basic.md",
+  "title": "Title",
+  "content_hash": "6606a44500d7b65e7f78f992ac31ca8fa2bc34cf1affeda2d8770f02cffed2e4",
+  "chunks": [
+    {
+      "chunk_index": 0,
+      "heading": "Title",
+      "content": "Intro paragraph."
+    },
+    {
+      "chunk_index": 1,
+      "heading": "Section A",
+      "content": "Para one.\n\nPara two."
+    },
+    {
+      "chunk_index": 2,
+      "heading": "Sub",
+      "content": "Deep text."
+    }
+  ]
+}

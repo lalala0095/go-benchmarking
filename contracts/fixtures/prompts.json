@@ -1,0 +1,6 @@
+{
+  "plain": "Give me a two-sentence summary of why benchmarking matters.",
+  "inventory": "What's our electronics inventory looking like?",
+  "rag": "According to the docs, how does the benchmark measure server overhead?",
+  "time": "What time is it in UTC right now?"
+}

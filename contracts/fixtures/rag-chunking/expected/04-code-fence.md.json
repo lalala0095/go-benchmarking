@@ -1,0 +1,17 @@
+{
+  "source": "04-code-fence.md",
+  "title": "Code",
+  "content_hash": "d43b1054ab17e95169596fd9627258aedc6d8849d47b0b5e08ac51cb3709e302",
+  "chunks": [
+    {
+      "chunk_index": 0,
+      "heading": "Code",
+      "content": "Before fence.\n\n```python\n# not a heading\n\ndef f():\n\n    return 1\n```\n\nAfter fence."
+    },
+    {
+      "chunk_index": 1,
+      "heading": "Real heading",
+      "content": "Text."
+    }
+  ]
+}

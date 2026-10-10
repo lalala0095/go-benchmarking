@@ -1,0 +1,383 @@
+openapi: 3.1.0
+info:
+  title: Go vs FastAPI ADK Bench — shared server contract
+  version: 1.0.0
+  description: |
+    Implemented identically by go-server and fastapi-server (both listen on :8080 in-container).
+    Normative companions: contracts/sse-events.md, contracts/agent-spec.md, docs/09-RAG.md.
+    Errors use the Error schema with an appropriate 4xx/5xx status.
+servers:
+  - url: http://localhost:8081
+    description: go-server (compose)
+  - url: http://localhost:8082
+    description: fastapi-server (compose)
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness + DB readiness (pings the app DB pool)
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+        "503": { description: DB unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+
+  /v1/info:
+    get:
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/Info" } } } }
+
+  /metrics:
+    get:
+      summary: Prometheus text exposition (names in docs/02 §7)
+      responses:
+        "200": { description: ok, content: { text/plain: { schema: { type: string } } } }
+
+  /v1/sessions:
+    post:
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [user_id], properties: { user_id: { type: string } } } } }
+      responses:
+        "201": { description: created, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+
+  /v1/sessions/{session_id}:
+    parameters:
+      - { name: session_id, in: path, required: true, schema: { type: string } }
+      - { name: user_id, in: query, required: true, schema: { type: string } }
+    get:
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/SessionHistory" } } } }
+        "404": { description: not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    delete:
+      responses:
+        "204": { description: deleted }
+        "404": { description: not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /v1/chat:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ChatRequest" } } } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/ChatResponse" } } } }
+        "400": { description: bad request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: session not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: upstream model error (code UPSTREAM_429 / UPSTREAM_ERROR), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /v1/chat/stream:
+    post:
+      summary: SSE stream; events per contracts/sse-events.md. Validation errors before streaming starts return JSON 400/404.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ChatRequest" } } } }
+      responses:
+        "200": { description: event stream, content: { text/event-stream: { schema: { type: string } } } }
+
+  /v1/rag/ingest:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/IngestRequest" } } } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/IngestResponse" } } } }
+        "400": { description: bad request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /v1/rag/chunk:
+    post:
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [content], properties: { content: { type: string } } } } }
+      responses:
+        "200":
+          description: ok
+          content: { application/json: { schema: { type: object, required: [chunks], properties: { chunks: { type: array, items: { $ref: "#/components/schemas/Chunk" } } } } } }
+
+  /v1/rag/embed:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [texts]
+              properties:
+                texts: { type: array, items: { type: string }, maxItems: 256 }
+                embedder: { type: string, enum: [mock, gemini], default: mock }
+                task: { type: string, enum: [document, query], default: document }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [vectors, dim, timings]
+                properties:
+                  dim: { type: integer, const: 768 }
+                  vectors: { type: array, items: { type: array, items: { type: number } } }
+                  timings: { type: object, properties: { embed_ms: { type: number }, total_ms: { type: number } } }
+
+  /v1/rag/search:
+    get:
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: required unless preset=random }
+        - { name: preset, in: query, schema: { type: string, enum: [random] } }
+        - { name: k, in: query, schema: { type: integer, default: 5, minimum: 1, maximum: 20 } }
+        - { name: mode, in: query, schema: { type: string, enum: [hybrid, vector, fts], default: hybrid } }
+        - { name: embedder, in: query, schema: { type: string, enum: [mock, gemini], default: mock } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/SearchResponse" } } } }
+        "400": { description: bad request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /v1/rag/stats:
+    get:
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RagStats" } } } }
+
+  /v1/rag/documents:
+    delete:
+      responses:
+        "204": { description: knowledge base wiped }
+
+  /bench/ping:
+    get:
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean, const: true } } } } } }
+
+  /bench/json:
+    post:
+      summary: Parse body (contracts/fixtures/json-10kb.json shape), return item_count, sum of prices (rounded 2dp), echo first 10 items
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { type: object } } } } } } }
+      responses:
+        "200":
+          description: ok
+          content: { application/json: { schema: { type: object, required: [item_count, total, echo], properties: { item_count: { type: integer }, total: { type: number }, echo: { type: array, items: { type: object } } } } } }
+
+  /bench/cpu:
+    get:
+      summary: |
+        h = sha256("bench-seed"); repeat n*1000 times: h = sha256(h) (raw 32-byte digest in, digest out).
+        Return hex(h). Python default route runs on the event loop; ?offload=1 uses a threadpool (Go ignores offload).
+      parameters:
+        - { name: n, in: query, schema: { type: integer, default: 25, minimum: 1, maximum: 1000 } }
+        - { name: offload, in: query, schema: { type: integer, enum: [0, 1], default: 0 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: object, required: [n, hash], properties: { n: { type: integer }, hash: { type: string } } } } } }
+
+  /bench/sleep:
+    get:
+      parameters:
+        - { name: ms, in: query, schema: { type: integer, default: 100, minimum: 0, maximum: 10000 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: object, properties: { slept_ms: { type: integer } } } } } }
+
+  /bench/db/read:
+    get:
+      parameters:
+        - { name: id, in: query, schema: { type: integer, minimum: 1, maximum: 100000 }, description: random 1..100000 when omitted }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/BenchItem" } } } }
+
+  /bench/db/query:
+    get:
+      summary: SELECT category, count(*)::int, avg(price)::float8 FROM app.bench_items GROUP BY category ORDER BY category
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object, properties: { category: { type: string }, count: { type: integer }, avg_price: { type: number } } } }
+
+  /bench/db/write:
+    post:
+      summary: INSERT INTO app.bench_writes(payload) VALUES ($1::jsonb) RETURNING id
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "201": { description: created, content: { application/json: { schema: { type: object, properties: { id: { type: integer } } } } } }
+
+components:
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [BAD_REQUEST, SESSION_NOT_FOUND, NOT_FOUND, UPSTREAM_429, UPSTREAM_ERROR, INTERNAL] }
+        message: { type: string }
+        request_id: { type: string }
+
+    Health:
+      type: object
+      required: [status, db]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        db: { type: string, enum: [ok, error] }
+
+    Info:
+      type: object
+      required: [impl, runtime, adk_version, framework, workers, model, embed_model, started_at]
+      properties:
+        impl: { type: string, enum: [go, python] }
+        runtime: { type: string, examples: ["go1.26.6", "cpython3.12.12"] }
+        adk_version: { type: string }
+        framework: { type: string, examples: ["net/http", "fastapi 0.x / uvicorn 0.x"] }
+        workers: { type: integer, description: "Python: uvicorn workers; Go: 1" }
+        gomaxprocs: { type: [integer, "null"], description: "Go only" }
+        model: { type: string }
+        embed_model: { type: string }
+        gemini_configured: { type: boolean, description: GOOGLE_API_KEY present }
+        db_pool_max: { type: integer }
+        cgroup_cpu_limit: { type: [number, "null"], description: "cpu.max quota/period, null if unlimited" }
+        cgroup_memory_limit_bytes: { type: [integer, "null"] }
+        started_at: { type: string, format: date-time }
+
+    Session:
+      type: object
+      required: [session_id, user_id, created_at]
+      properties:
+        session_id: { type: string }
+        user_id: { type: string }
+        created_at: { type: string, format: date-time }
+
+    SessionHistory:
+      type: object
+      required: [session_id, events]
+      properties:
+        session_id: { type: string }
+        events:
+          type: array
+          items:
+            type: object
+            required: [role, ts]
+            properties:
+              role: { type: string, enum: [user, model, tool] }
+              text: { type: string, description: concatenated text parts (may be empty for tool/function events) }
+              tool: { type: string, description: function name for function call/response events }
+              ts: { type: string, format: date-time }
+
+    ChatRequest:
+      type: object
+      required: [user_id, session_id, message]
+      properties:
+        user_id: { type: string }
+        session_id: { type: string }
+        message: { type: string, minLength: 1, maxLength: 20000 }
+        mode: { type: string, enum: [gemini, mock], default: mock }
+        request_id: { type: string, description: echoed back; generated (uuid4) if omitted }
+
+    Timings:
+      type: object
+      required: [server_total_ms, first_token_ms, model_ms, tool_ms, session_ms, overhead_ms]
+      properties:
+        server_total_ms: { type: number }
+        first_token_ms: { type: number }
+        model_ms: { type: number }
+        tool_ms: { type: number }
+        session_ms: { type: number }
+        overhead_ms: { type: number }
+
+    ToolCall:
+      type: object
+      required: [name, args, duration_ms]
+      properties:
+        name: { type: string }
+        args: { type: object }
+        duration_ms: { type: number }
+        result_summary: { type: object }
+        embed_ms: { type: number }
+        db_ms: { type: number }
+
+    ChatResponse:
+      type: object
+      required: [request_id, session_id, reply, tool_calls, timings, usage]
+      properties:
+        request_id: { type: string }
+        session_id: { type: string }
+        reply: { type: string }
+        tool_calls: { type: array, items: { $ref: "#/components/schemas/ToolCall" } }
+        timings: { $ref: "#/components/schemas/Timings" }
+        usage: { type: object, properties: { input_tokens: { type: integer }, output_tokens: { type: integer } } }
+
+    IngestRequest:
+      type: object
+      properties:
+        corpus: { type: string, enum: [default] }
+        include_private: { type: boolean, default: false }
+        documents:
+          type: array
+          items:
+            type: object
+            required: [source, content]
+            properties:
+              source: { type: string }
+              title: { type: string }
+              content: { type: string }
+        repeat: { type: integer, minimum: 1, maximum: 100, default: 1 }
+        force: { type: boolean, default: false }
+        embedders: { type: array, items: { type: string, enum: [gemini, mock] }, description: "default [gemini, mock] if GOOGLE_API_KEY set, else [mock]; mock is always included" }
+
+    IngestResponse:
+      type: object
+      required: [documents, skipped, chunks, chars, embedders, timings]
+      properties:
+        documents: { type: integer, description: documents (re)ingested }
+        skipped: { type: integer }
+        chunks: { type: integer }
+        chars: { type: integer }
+        embedders: { type: array, items: { type: string } }
+        timings:
+          type: object
+          required: [read_ms, chunk_ms, embed_ms, db_ms, total_ms]
+          properties:
+            read_ms: { type: number }
+            chunk_ms: { type: number }
+            embed_ms: { type: number }
+            embed_gemini_ms: { type: number }
+            embed_mock_ms: { type: number }
+            db_ms: { type: number }
+            total_ms: { type: number }
+
+    Chunk:
+      type: object
+      required: [chunk_index, heading, content]
+      properties:
+        chunk_index: { type: integer }
+        heading: { type: string }
+        content: { type: string }
+
+    SearchResponse:
+      type: object
+      required: [query, mode, embedder, results, timings]
+      properties:
+        query: { type: string }
+        mode: { type: string }
+        embedder: { type: string }
+        results:
+          type: array
+          items:
+            type: object
+            required: [source, title, heading, content, score]
+            properties:
+              source: { type: string }
+              title: { type: string }
+              heading: { type: string }
+              content: { type: string }
+              score: { type: number }
+        timings: { type: object, properties: { embed_ms: { type: number }, db_ms: { type: number }, total_ms: { type: number } } }
+
+    RagStats:
+      type: object
+      required: [documents, chunks, chars, gemini_embedded_chunks]
+      properties:
+        documents: { type: integer }
+        chunks: { type: integer }
+        chars: { type: integer }
+        gemini_embedded_chunks: { type: integer }
+        last_ingested_at: { type: [string, "null"], format: date-time }
+
+    BenchItem:
+      type: object
+      properties:
+        id: { type: integer }
+        sku: { type: string }
+        name: { type: string }
+        category: { type: string }
+        price: { type: number }
+        stock: { type: integer }
+        attributes: { type: object }

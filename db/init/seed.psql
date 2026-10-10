@@ -1,0 +1,12 @@
+-- Deterministic seed: byte-identical in go_app and py_app.
+INSERT INTO app.bench_items (id, sku, name, category, price, stock, attributes, created_at)
+SELECT g,
+       'SKU-' || lpad(g::text, 6, '0'),
+       'Item ' || g,
+       (ARRAY['electronics','books','toys','home','garden','sports','beauty','food','auto','office'])[1 + (g % 10)],
+       round(((g * 7919) % 100000) / 100.0 + 1, 2),
+       (g * 31) % 500,
+       jsonb_build_object('color', (ARRAY['red','green','blue','black'])[1 + (g % 4)], 'weight_g', (g * 13) % 5000),
+       TIMESTAMPTZ '2026-01-01 00:00:00+00'
+FROM generate_series(1, 100000) AS g;
+ANALYZE app.bench_items;

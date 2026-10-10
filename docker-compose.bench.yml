@@ -1,0 +1,8 @@
+# CPU pinning overlay for official numbers on the Ryzen 5 4600G (SMT siblings n, n+6).
+# Regenerate for other CPUs with scripts/cpu-layout.sh. Usage: make up-bench
+# core0 (0,6): OS + sshd + k3s · core1: postgres · core2: go · core3: python · core4-5: dashboard/loadgen
+services:
+  postgres:       { cpuset: "1,7" }
+  go-server:      { cpuset: "2,8" }
+  fastapi-server: { cpuset: "3,9" }
+  dashboard:      { cpuset: "4,5,10,11" }

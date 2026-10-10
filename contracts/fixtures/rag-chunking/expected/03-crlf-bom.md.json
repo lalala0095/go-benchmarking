@@ -1,0 +1,17 @@
+{
+  "source": "03-crlf-bom.md",
+  "title": "BOM doc",
+  "content_hash": "4f161119d790df0b0f996f549125ded68d803077d735011e8a79bd182d47f37b",
+  "chunks": [
+    {
+      "chunk_index": 0,
+      "heading": "BOM doc",
+      "content": "Windows line\nendings here."
+    },
+    {
+      "chunk_index": 1,
+      "heading": "Next",
+      "content": "More."
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+# Go vs FastAPI ADK bench. See docs/02-TECHNICAL-REQUIREMENTS.md §4.
+# All ports bind to 127.0.0.1 (Docker-published ports bypass ufw on Ubuntu).
+name: go-benchmarking
+
+x-server-common: &server-common
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+  volumes:
+    - ./corpus:/corpus:ro
+  ulimits:
+    nofile: { soft: 65535, hard: 65535 }
+  stop_grace_period: 25s
+  deploy:
+    resources:
+      limits: { cpus: "${SERVER_CPUS:-2}", memory: "${SERVER_MEM:-1g}" }
+
+x-server-env: &server-env
+  PORT: "8080"
+  GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+  GEMINI_EMBED_MODEL: ${GEMINI_EMBED_MODEL:-gemini-embedding-2}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  MOCK_FIRST_TOKEN_DELAY_MS: ${MOCK_FIRST_TOKEN_DELAY_MS:-250}
+  MOCK_TOKEN_DELAY_MS: ${MOCK_TOKEN_DELAY_MS:-15}
+  MOCK_TOKENS: ${MOCK_TOKENS:-60}
+  MOCK_EMBED_DELAY_MS: ${MOCK_EMBED_DELAY_MS:-40}
+  EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-100}
+  CORPUS_DIR: /corpus
+  CONTRACTS_DIR: /contracts
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bench}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bench}
+      POSTGRES_DB: bench
+    command: >
+      postgres -c shared_buffers=512MB -c max_connections=200
+      -c synchronous_commit=on -c random_page_cost=1.1
+      -c maintenance_work_mem=256MB
+    shm_size: 1g
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bench} -d dashboard"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    deploy:
+      resources:
+        limits: { cpus: "${PG_CPUS:-2}", memory: "${PG_MEM:-2g}" }
+
+  go-server:
+    <<: *server-common
+    build: { context: ., dockerfile: go-server/Dockerfile }
+    image: go-benchmarking/go-server:dev
+    environment:
+      <<: *server-env
+      DATABASE_URL: postgres://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/go_app?sslmode=disable
+    ports: ["127.0.0.1:8081:8080"]
+    healthcheck:
+      test: ["CMD", "/app/server", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  fastapi-server:
+    <<: *server-common
+    build: { context: ., dockerfile: fastapi-server/Dockerfile }
+    image: go-benchmarking/fastapi-server:dev
+    environment:
+      <<: *server-env
+      PY_WORKERS: ${PY_WORKERS:-2}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/py_app
+    ports: ["127.0.0.1:8082:8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).status == 200 else 1)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  dashboard:
+    build: { context: ., dockerfile: dashboard/Dockerfile }
+    image: go-benchmarking/dashboard:dev
+    restart: unless-stopped
+    depends_on:
+      go-server: { condition: service_healthy }
+      fastapi-server: { condition: service_healthy }
+    environment:
+      PORT: "3000"
+      PLATFORM: compose
+      GO_URL: http://go-server:8080
+      PY_URL: http://fastapi-server:8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/dashboard
+      GO_APP_DATABASE_URL: postgres://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/go_app
+      PY_APP_DATABASE_URL: postgres://${POSTGRES_USER:-bench}:${POSTGRES_PASSWORD:-bench}@postgres:5432/py_app
+      COMPOSE_PROJECT: go-benchmarking
+      CONTRACTS_DIR: /contracts
+      REPORTS_DIR: /reports
+      GIT_SHA: ${GIT_SHA:-dev}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./reports:/reports
+    ports: ["127.0.0.1:3000:3000"]
+    ulimits:
+      nofile: { soft: 65535, hard: 65535 }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    deploy:
+      resources:
+        limits: { cpus: "${DASH_CPUS:-4}", memory: "${DASH_MEM:-2g}" }
+
+volumes:
+  pgdata:

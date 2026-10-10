@@ -1,0 +1,12 @@
+[
+  "How does the benchmark measure server overhead?",
+  "What is the Kubernetes rollout strategy?",
+  "Which Postgres tables store benchmark results?",
+  "How is CPU pinning configured on Ubuntu?",
+  "Explain the hybrid search with reciprocal rank fusion",
+  "What does the mock LLM do?",
+  "How are Python workers configured in Kubernetes?",
+  "What metrics does each server expose?",
+  "How do I ingest documents into the knowledge base?",
+  "What is the chunking algorithm?"
+]

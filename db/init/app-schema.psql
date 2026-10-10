@@ -1,0 +1,53 @@
+-- App schema, applied identically to go_app and py_app (docs/05-DATABASE-SCHEMA.md §2, docs/09-RAG.md §4).
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE SCHEMA IF NOT EXISTS app;
+
+-- Read workload + agent tool data (100k deterministic rows)
+CREATE TABLE app.bench_items (
+    id          INTEGER       PRIMARY KEY,
+    sku         TEXT          NOT NULL UNIQUE,
+    name        TEXT          NOT NULL,
+    category    TEXT          NOT NULL,
+    price       NUMERIC(10,2) NOT NULL,
+    stock       INTEGER       NOT NULL,
+    attributes  JSONB         NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE INDEX bench_items_category_idx ON app.bench_items (category);
+
+-- Write workload (the dashboard truncates it before each db-write run)
+CREATE TABLE app.bench_writes (
+    id          BIGSERIAL    PRIMARY KEY,
+    payload     JSONB        NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- RAG knowledge base
+CREATE TABLE app.rag_documents (
+    id            BIGSERIAL   PRIMARY KEY,
+    source        TEXT        NOT NULL UNIQUE,
+    title         TEXT        NOT NULL,
+    content_hash  TEXT        NOT NULL,
+    char_count    INTEGER     NOT NULL,
+    chunk_count   INTEGER     NOT NULL,
+    embed_model   TEXT,
+    ingested_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.rag_chunks (
+    id                BIGSERIAL   PRIMARY KEY,
+    document_id       BIGINT      NOT NULL REFERENCES app.rag_documents(id) ON DELETE CASCADE,
+    chunk_index       INTEGER     NOT NULL,
+    heading           TEXT        NOT NULL DEFAULT '',
+    content           TEXT        NOT NULL,
+    char_count        INTEGER     NOT NULL,
+    embedding_gemini  vector(768),
+    embedding_mock    vector(768) NOT NULL,
+    tsv               tsvector GENERATED ALWAYS AS (
+                        setweight(to_tsvector('english', heading), 'A') ||
+                        setweight(to_tsvector('english', content), 'B')) STORED,
+    UNIQUE (document_id, chunk_index)
+);
+CREATE INDEX rag_chunks_tsv_idx    ON app.rag_chunks USING GIN (tsv);
+CREATE INDEX rag_chunks_gemini_idx ON app.rag_chunks USING hnsw (embedding_gemini vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+CREATE INDEX rag_chunks_mock_idx   ON app.rag_chunks USING hnsw (embedding_mock   vector_cosine_ops) WITH (m = 16, ef_construction = 64);

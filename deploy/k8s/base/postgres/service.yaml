@@ -1,0 +1,18 @@
+# Headless Service (clusterIP: None): DNS "postgres" resolves straight to the
+# pod IP instead of a virtual IP. A StatefulSet needs one (spec.serviceName) to
+# give its pods stable names like postgres-0.postgres.bench.svc.cluster.local.
+# The name matches the Compose service, so DATABASE_URL is identical in both.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

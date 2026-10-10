@@ -1,0 +1,16 @@
+# ClusterIP Service: a stable virtual IP + DNS name ("fastapi-server") in front of
+# whichever fastapi-server pods are Ready right now. Same name as in Compose.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-server
+  labels:
+    app.kubernetes.io/name: fastapi-server
+    bench/target: python
+spec:
+  selector:
+    app.kubernetes.io/name: fastapi-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http       # the named containerPort, so the pod port can change freely

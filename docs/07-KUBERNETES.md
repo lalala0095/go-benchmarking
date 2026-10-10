@@ -97,7 +97,7 @@ Why `generated/`: Kustomize refuses to load files outside its directory, so `mak
 | Python workers | `PY_WORKERS` comes from the downward API: `resourceFieldRef: {resource: limits.cpu, divisor: "1"}`. Workers track the CPU limit automatically. Go needs nothing, because the runtime reads the cgroup limit. |
 | Secrets | `make k8s-secrets` creates Secret `gemini` from `.env`. It's never committed. (Secrets are only base64. Sealed Secrets / SOPS is an optional extra.) |
 | Postgres | StatefulSet with 1 replica, `volumeClaimTemplates` 10Gi on `local-path`, and ConfigMap `db-init` mounted at `/docker-entrypoint-initdb.d`. These are the same scripts Compose uses. |
-| Dashboard RBAC | Role in `bench`: `pods` get/list/watch/delete. `deployments`, `deployments/scale` get/patch. `horizontalpodautoscalers` get/list/patch. `pods.metrics.k8s.io` get/list. Nothing cluster-scoped. |
+| Dashboard RBAC | Role in `bench`: `pods` get/list/watch/delete. `deployments`, `deployments/scale` get/patch. `horizontalpodautoscalers` get/list/create/patch/delete. `pods.metrics.k8s.io` get/list. Nothing cluster-scoped. |
 | Rollouts | `strategy: RollingUpdate`, `maxSurge: 1`, `maxUnavailable: 0`, and a `preStop` sleep of 5 s so endpoints are removed before SIGTERM. Both servers must handle SIGTERM gracefully (drain in-flight SSE, with a 20 s grace period). |
 | Labels | `app.kubernetes.io/name`, `app.kubernetes.io/part-of: go-benchmarking`, and `bench/target: go|python`. |
 

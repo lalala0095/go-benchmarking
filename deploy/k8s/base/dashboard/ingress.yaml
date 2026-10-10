@@ -1,0 +1,21 @@
+# HTTP routing rule for k3s's bundled Traefik ingress controller: every path
+# goes to the dashboard. With servicelb disabled, Traefik is not exposed on
+# the LAN; reach it via `make k8s-open` (port-forward svc/traefik 8080:80).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dashboard
+  labels:
+    app.kubernetes.io/name: dashboard
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard
+                port:
+                  number: 3000

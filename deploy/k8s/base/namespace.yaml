@@ -1,0 +1,6 @@
+# One namespace for the whole project: easy to inspect (kubectl -n bench ...),
+# easy to scope RBAC to, and easy to wipe (make k8s-down).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bench

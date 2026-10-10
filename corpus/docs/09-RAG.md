@@ -97,7 +97,7 @@ Two columns rather than an `embedder` row key, so each query hits its own HNSW i
 ```json
 { "corpus": "default" }                                   // every .md/.txt under /corpus (recursive, sorted by path; skips private/ unless "include_private": true)
 { "documents": [ { "source": "notes/a.md", "title": "optional", "content": "..." } ] }
-{ "corpus": "default", "repeat": 10, "force": true, "embedders": ["mock"] }   // benchmark mode: sources "r{i}/<path>"
+{ "corpus": "default", "repeat": 10, "force": true, "embedders": ["mock"] }   // benchmark mode: sources "r{i}/<path>", i = 0..repeat-1
 ```
 
 `embedders` defaults to `["gemini","mock"]` when `GOOGLE_API_KEY` is set, otherwise `["mock"]`.
@@ -163,7 +163,7 @@ ORDER BY f.score DESC, c.id
 LIMIT $3;
 ```
 
-The `vector` and `fts` variants return just that arm (the score is `1 - dist` or `rank`). For `fts`, `$1` is accepted but unused, so the statement signatures stay identical.
+The `vector` and `fts` variants return just that arm (the score is `1 - dist` or `rank`). For `fts`, `$1` is accepted but unused, so the statement signatures stay identical. **No embedding call is made in `fts` mode** (`embed_ms = 0`). A zero vector is passed as `$1`.
 
 - `k` defaults to 5, max 20. In tool responses, content is truncated to 800 code points.
 - Search response: `{"query","mode","embedder","results":[{"source","title","heading","content","score"}],"timings":{"embed_ms","db_ms","total_ms"}}`.

@@ -1,0 +1,18 @@
+# k3s server config. Copied to /etc/rancher/k3s/config.yaml BEFORE installing k3s
+# (scripts/ubuntu-setup.sh does this). Every key mirrors a `k3s server --flag`.
+# See docs/07-KUBERNETES.md §2.
+
+# Only root and you (via ~/.kube/config copy) can read the admin kubeconfig.
+write-kubeconfig-mode: "0600"
+
+disable:
+  - servicelb          # don't open :80/:443 to the LAN; we use port-forward
+
+kubelet-arg:
+  - "max-pods=110"
+  # K12 (advanced) adds: cpu-manager-policy=static, reserved-cpus=0-1
+  # Note: reserving 2 CPUs drops node allocatable to 10, so the bench overlay
+  # (9.5 + system pods) no longer has room for rollout surges - lower the dashboard.
+  # Uncomment both lines, then: sudo rm /var/lib/kubelet/cpu_manager_state && sudo systemctl restart k3s
+  # - "cpu-manager-policy=static"
+  # - "reserved-cpus=0-1"

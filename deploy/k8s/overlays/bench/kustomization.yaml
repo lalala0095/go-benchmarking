@@ -1,0 +1,23 @@
+# BENCH overlay: the one used for official k8s numbers.
+# requests == limits for the targets and Postgres -> QoS class "Guaranteed":
+# the scheduler reserves exactly what the pod may use, and the kubelet evicts
+# Guaranteed pods last. Same CPU/memory limits as Compose (TRD §4.1).
+#
+# CPU budget on the Ryzen 5 4600G (12 threads, node allocatable = 12):
+#   limits:   postgres 2 + go-server 2 + fastapi-server 2 + dashboard 4 = 10 CPUs,
+#             leaving ~2 threads for the OS, k3s itself and the desktop/browser.
+#   requests: 2 + 2 + 2 + 3.5 = 9.5, plus ~0.2 for k3s system pods (coredns,
+#             metrics-server). A rolling update with maxSurge: 1 needs room for
+#             ONE extra server pod (+2) -> 11.7 <= 12. With a 4-CPU dashboard
+#             request it would be 12.2 and the surge pod would sit Pending forever
+#             (maxUnavailable: 0), so the dashboard (the load generator, not a
+#             target) is Burstable here: request 3.5, limit 4 - same CPU cap.
+#             Its own rollout can't surge either, so it uses Recreate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - path: resources.yaml

@@ -1,0 +1,48 @@
+# HPA: every 15 s, desired = ceil(current * currentCPU / target). Utilization is
+# measured against the CPU *request* (1 CPU here), which is why HPA needs
+# requests set (lab K9). CPU comes from metrics-server, bundled with k3s.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: go-server
+  labels:
+    app.kubernetes.io/name: go-server
+    bench/target: go
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: go-server
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  # Defaults kept on purpose: scale up immediately, scale down only after a
+  # 300 s stabilization window (avoids flapping). Lab K9 explores `behavior:`.
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fastapi-server
+  labels:
+    app.kubernetes.io/name: fastapi-server
+    bench/target: python
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fastapi-server
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

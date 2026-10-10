@@ -1,0 +1,13 @@
+# DEV overlay: small footprint for fast iteration (also fits a laptop/VM).
+# Requests are low so everything schedules; limits keep a runaway pod in check.
+# QoS class = Burstable (requests < limits). Not for benchmark numbers.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Strategic-merge patches: write only the fields you change; Kustomize finds
+# the target by kind + name and merges (containers are matched by name).
+patches:
+  - path: resources.yaml

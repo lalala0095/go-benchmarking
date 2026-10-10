@@ -1,0 +1,107 @@
+# fastapi-server: same shape as go-server (see that file for the probe and
+# rollout comments). Differences: worker count from the downward API, an
+# emptyDir for Prometheus multiprocess files, and the asyncpg URL scheme. Lab K4.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-server
+  labels:
+    app.kubernetes.io/name: fastapi-server
+    bench/target: python
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fastapi-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fastapi-server
+        bench/target: python
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg17
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -d py_app -t 2; do echo "waiting for postgres"; sleep 2; done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: fastapi-server
+          image: localhost:5000/fastapi-server
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: server-env
+          env:
+            # Downward API: the container's own CPU limit, rounded UP to whole
+            # cores (divisor 1): 500m -> 1, 2 -> 2. Uvicorn workers then track the
+            # limit automatically, like Go's GOMAXPROCS does (profile py-Nw).
+            - name: PY_WORKERS
+              valueFrom:
+                resourceFieldRef:
+                  containerName: fastapi-server
+                  resource: limits.cpu
+                  divisor: "1"
+            # prometheus_client multiprocess mode: every worker writes its metrics
+            # here. Must be writable and empty at start -> a per-pod emptyDir.
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: /tmp/prometheus-multiproc
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef: { name: gemini, key: GOOGLE_API_KEY, optional: true }
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_PASSWORD }
+            - name: DATABASE_URL
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/py_app
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /bench/ping, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: corpus
+              mountPath: /corpus
+              readOnly: true
+            - name: prometheus-multiproc
+              mountPath: /tmp/prometheus-multiproc
+      volumes:
+        - name: corpus
+          configMap:
+            name: rag-corpus
+        - name: prometheus-multiproc
+          emptyDir: {}

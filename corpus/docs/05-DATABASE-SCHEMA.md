@@ -78,7 +78,7 @@ FROM generate_series(1, 100000) AS g;
 ANALYZE app.bench_items;
 ```
 
-The servers connect with `search_path=app,public`, so bench SQL can use unqualified names. ADK session tables live in `public`.
+All application SQL is **schema-qualified** (`app.bench_items`, `app.rag_chunks`, …), and the servers do **not** change `search_path`. ADK session tables are created by the ADK session services in `public`. Changing `search_path` would make GORM or SQLAlchemy create them in `app` instead.
 
 ### 2.1 ADK-managed session tables (do not hand-write)
 

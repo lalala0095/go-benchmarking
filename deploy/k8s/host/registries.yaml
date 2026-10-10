@@ -1,0 +1,6 @@
+# Copied to /etc/rancher/k3s/registries.yaml. Tells k3s's containerd that
+# "localhost:5000/..." images live in the plain-HTTP registry started by
+# `make registry-up` (registry:2 on 127.0.0.1:5000 under Docker).
+mirrors:
+  "localhost:5000":
+    endpoint: ["http://localhost:5000"]

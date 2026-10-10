@@ -185,7 +185,7 @@ The response is `text/event-stream`. Events (also in `contracts/sse-events.md`):
 
 ```
 event: meta
-data: {"request_id":"…","impl":"go","received_at_ns":<server monotonic>}
+data: {"request_id":"…","impl":"go","session_id":"…","mode":"mock","model":"mock"}   // normative: contracts/sse-events.md
 
 event: token
 data: {"text":"partial text","seq":1}
@@ -211,7 +211,7 @@ data: {"code":"UPSTREAM_429"|"INTERNAL"|…,"message":"…"}
 
 **Timing rule:** both implementations measure with a monotonic clock (`time.Now()`/`time.Since` in Go, `time.perf_counter_ns()` in Python). `model_ms` covers only the interval spent awaiting chunks from the model. Each server wraps its model in a timing decorator (see §5.5).
 
-Every response sets the header `Server-Timing: total;dur=…, model;dur=…, db;dur=…`.
+Non-streaming responses set `Server-Timing`. Streams don't, because their timings arrive in the `done` event (contracts/sse-events.md).
 
 ### 5.4 Bench endpoints (L1/L2)
 

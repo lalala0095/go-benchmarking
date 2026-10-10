@@ -1,0 +1,105 @@
+# Dashboard + load generator. Talks to the targets through their Services and
+# to the Kubernetes API through its ServiceAccount (no Docker socket in k8s).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  labels:
+    app.kubernetes.io/name: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dashboard
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dashboard
+    spec:
+      serviceAccountName: dashboard
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg17
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -d dashboard -t 2; do echo "waiting for postgres"; sleep 2; done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: dashboard
+          image: localhost:5000/dashboard
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: build-info           # GIT_SHA
+          env:
+            - name: PORT
+              value: "3000"
+            - name: PLATFORM               # selects the k8s platform adapter (TRD §8.1)
+              value: k8s
+            # Downward API: "whatever namespace I was deployed into" (= bench).
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GO_URL
+              value: http://go-server:8080
+            - name: PY_URL
+              value: http://fastapi-server:8080
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_PASSWORD }
+            - name: DATABASE_URL
+              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/dashboard
+            - name: GO_APP_DATABASE_URL
+              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/go_app
+            - name: PY_APP_DATABASE_URL
+              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/py_app
+            - name: CONTRACTS_DIR
+              value: /contracts
+            - name: REPORTS_DIR
+              value: /reports
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: reports
+              mountPath: /reports
+      volumes:
+        # Exported reports live as long as the pod. Download them from the UI;
+        # use a PVC instead if you want them to survive restarts.
+        - name: reports
+          emptyDir: {}

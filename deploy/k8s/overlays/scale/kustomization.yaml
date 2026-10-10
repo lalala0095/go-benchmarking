@@ -1,0 +1,28 @@
+# SCALE overlay: the bench overlay + HorizontalPodAutoscalers (scale-out scenario).
+# Overlays can stack: this one starts from ../bench, not from the base.
+#
+# Smaller pods so up to 4 replicas fit. CPU REQUEST budget on a 12-thread node:
+#   postgres 2 + dashboard 3 + the target being scaled 4 x 1 + the other target 1
+#   = 10 CPUs <= 12 allocatable, keeping ~2 threads for OS/k3s/desktop.
+# (+ ~0.2 for k3s system pods; a rollout surge adds 1 more = 11.2.)
+# Scenarios scale one target at a time. If both hit 4 replicas the extra pods
+# of the second target stay Pending: the scheduler counts requests, not usage.
+# The dashboard is Guaranteed again here (3 == 3) and keeps bench's Recreate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../bench
+  - hpa.yaml
+
+patches:
+  - path: resources.yaml
+  # JSON 6902 patch: precise operations by path. Removing spec.replicas hands
+  # the replica count to the HPA; otherwise every `kubectl apply` would reset
+  # it to 1 and fight the autoscaler.
+  - target:
+      kind: Deployment
+      name: go-server|fastapi-server
+    patch: |-
+      - op: remove
+        path: /spec/replicas

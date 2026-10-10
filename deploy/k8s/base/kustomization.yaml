@@ -1,0 +1,79 @@
+# Kustomize BASE: everything the stack needs, with modest "works anywhere"
+# resources. Overlays (../overlays/{dev,bench,scale}) only change what differs.
+# Render it:   kubectl kustomize deploy/k8s/overlays/dev
+# Apply it:    make k8s-up OVERLAY=dev   (runs sync + secrets + apply.sh)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Every namespaced object below lands in "bench" (no need to repeat it per file).
+namespace: bench
+
+# Added to every object's metadata (and pod templates, so pods carry it too).
+# includeSelectors: false keeps it OUT of Deployment/Service selectors:
+# selectors are immutable, so a label you might change must never be in one.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: go-benchmarking
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - namespace.yaml
+  - postgres/statefulset.yaml
+  - postgres/service.yaml
+  - go-server/deployment.yaml
+  - go-server/service.yaml
+  - fastapi-server/deployment.yaml
+  - fastapi-server/service.yaml
+  - dashboard/serviceaccount.yaml
+  - dashboard/role.yaml
+  - dashboard/rolebinding.yaml
+  - dashboard/deployment.yaml
+  - dashboard/service.yaml
+  - dashboard/ingress.yaml
+  # git-ignored, written by `make k8s-sync` (deploy/k8s/scripts/sync.sh):
+  # a small kustomization holding the db-init and rag-corpus ConfigMap generators.
+  # Kustomize can't read files outside its own directory tree, hence the copy.
+  - generated
+
+patches:
+  # Also written by sync.sh: maps each ConfigMap key (no "/" allowed in keys)
+  # back to its real path (docs/01-PRD.md) inside the /corpus volume.
+  - path: generated/corpus-volume-patch.yaml
+
+# Generated ConfigMaps get a content-hash suffix (server-env-7c9f...). Pods
+# reference the hashed name, so changing a value rolls the Deployment
+# automatically. That is the main reason to prefer generators over plain YAML.
+configMapGenerator:
+  # Non-secret server settings, same names/defaults as x-server-env in
+  # docker-compose.yml. apply.sh merges matching keys from your .env on top.
+  - name: server-env
+    literals:
+      - PORT=8080
+      - GEMINI_MODEL=gemini-3.5-flash-lite
+      - GEMINI_EMBED_MODEL=gemini-embedding-2
+      - DB_POOL_MAX=10
+      - MOCK_FIRST_TOKEN_DELAY_MS=250
+      - MOCK_TOKEN_DELAY_MS=15
+      - MOCK_TOKENS=60
+      - MOCK_EMBED_DELAY_MS=40
+      - EMBED_BATCH_SIZE=100
+      - CORPUS_DIR=/corpus
+      - CONTRACTS_DIR=/contracts
+  # Build metadata shown by the dashboard. apply.sh overrides GIT_SHA with the image tag.
+  - name: build-info
+    literals:
+      - GIT_SHA=dev
+
+# Secrets "gemini" and "postgres-credentials" are NOT generated here on purpose:
+# they come from .env via `make k8s-secrets` and must never be committed.
+
+# Image names used in the manifests. The tag is a placeholder: apply.sh pins the
+# real immutable tag (git sha) with an `images:` override at deploy time.
+images:
+  - name: localhost:5000/go-server
+    newTag: dev
+  - name: localhost:5000/fastapi-server
+    newTag: dev
+  - name: localhost:5000/dashboard
+    newTag: dev

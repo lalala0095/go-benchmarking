@@ -1,0 +1,75 @@
+# Integer CPUs on purpose: with the static CPU manager (lab K12) only
+# Guaranteed pods with whole-number CPU requests get exclusive cores.
+# Init containers are included too (a pod is Guaranteed only if EVERY container is).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-server
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: go-server
+          resources:
+            requests: { cpu: "2", memory: 1Gi }
+            limits: { cpu: "2", memory: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-server
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: fastapi-server
+          resources:            # -> PY_WORKERS=2 (py-Nw profile)
+            requests: { cpu: "2", memory: 1Gi }
+            limits: { cpu: "2", memory: 1Gi }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  template:
+    spec:
+      containers:
+        - name: postgres
+          resources:
+            requests: { cpu: "2", memory: 2Gi }
+            limits: { cpu: "2", memory: 2Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+spec:
+  # Recreate: stop the old pod, then start the new one. No room to surge a
+  # second 3.5-CPU dashboard on this node (see kustomization.yaml). The
+  # dashboard is the orchestrator, so a few seconds of downtime is fine.
+  strategy:
+    type: Recreate
+    rollingUpdate: null      # null deletes the base's rollingUpdate block (invalid with Recreate)
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: dashboard
+          resources:            # Burstable on purpose: request < limit (budget above)
+            requests: { cpu: 3500m, memory: 2Gi }
+            limits: { cpu: "4", memory: 2Gi }

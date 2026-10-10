@@ -1,0 +1,110 @@
+# go-server: stateless, so a Deployment (Deployment -> ReplicaSet -> Pods). Lab K3.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-server
+  labels:
+    app.kubernetes.io/name: go-server
+    bench/target: go
+spec:
+  replicas: 1                      # the scale overlay removes this and lets the HPA own it
+  # Selector = "which pods belong to me". Immutable after creation, so keep it minimal.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: go-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                  # start one new pod before...
+      maxUnavailable: 0            # ...stopping any old one: capacity never drops (lab K8)
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: go-server
+        bench/target: go
+    spec:
+      # SIGTERM -> grace period -> SIGKILL. preStop (5 s) runs first and counts
+      # toward it; the server then has the rest (~25 s, Compose uses 25 s) to drain SSE.
+      terminationGracePeriodSeconds: 30
+      # Kubernetes has no depends_on: wait for Postgres in an initContainer.
+      # Same image as Postgres (already on the node), it ships pg_isready.
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg17
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -d go_app -t 2; do echo "waiting for postgres"; sleep 2; done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: go-server
+          image: localhost:5000/go-server     # tag pinned by kustomize `images:`
+          # Tags are immutable (git sha), so the node cache is always correct.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          # All shared, non-secret settings (see base/kustomization.yaml).
+          envFrom:
+            - configMapRef:
+                name: server-env
+          env:
+            # optional: true -> the pod still starts without a key (mock mode only).
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef: { name: gemini, key: GOOGLE_API_KEY, optional: true }
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_PASSWORD }
+            # $(VAR) expands variables defined EARLIER in this list. "postgres"
+            # is the Service name, the same DNS name Compose uses.
+            - name: DATABASE_URL
+              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/go_app?sslmode=disable
+          # No GOMAXPROCS here: the Go runtime reads the cgroup CPU limit itself.
+          # startupProbe: holds off the other probes until the first success,
+          # so a slow first boot (ADK migrations) isn't killed. 2 s x 60 = 2 min.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          # readiness: "send me traffic?" /healthz checks the DB too; failing it
+          # only removes the pod from the Service endpoints, never restarts it.
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # liveness: "am I wedged?" Failing it RESTARTS the container, so it must
+          # NOT touch the DB: a DB blip would restart every pod at once (lab K3).
+          livenessProbe:
+            httpGet: { path: /bench/ping, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            # Endpoint removal and SIGTERM happen in parallel; sleeping first lets
+            # kube-proxy/Traefik stop routing here before the server begins shutting
+            # down. Native sleep action (k8s 1.30+): the distroless image has no `sleep`.
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: corpus
+              mountPath: /corpus
+              readOnly: true
+      volumes:
+        # RAG corpus (09-RAG.md). `items` (key -> path) is added by the generated
+        # patch so the tree matches Compose: /corpus/docs/01-PRD.md, ...
+        - name: corpus
+          configMap:
+            name: rag-corpus

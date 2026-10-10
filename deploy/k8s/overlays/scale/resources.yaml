@@ -1,0 +1,40 @@
+# Still Guaranteed (requests == limits). 1 CPU -> PY_WORKERS=1 per pod, so
+# Python scales by pods (py-1w x N), Go by pods with GOMAXPROCS=1 each.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: go-server
+          resources:
+            requests: { cpu: "1", memory: 512Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: fastapi-server
+          resources:
+            requests: { cpu: "1", memory: 512Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+spec:
+  template:
+    spec:
+      containers:
+        - name: dashboard
+          resources:
+            requests: { cpu: "3", memory: 2Gi }
+            limits: { cpu: "3", memory: 2Gi }

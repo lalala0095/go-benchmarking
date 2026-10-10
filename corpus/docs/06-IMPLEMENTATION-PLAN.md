@@ -58,7 +58,7 @@ Phase 7  (optional) Hybrid: Go gateway → Python ADK
 ### WS-GO (agent: `go-server`), owns `go-server/`
 1. Multi-stage Dockerfile (`golang:<version from ADK-Go go.mod>` → `gcr.io/distroless/static`), static binary, non-root.
 2. `internal/config`: env parsing.
-3. `internal/db`: `pgxpool` (search_path=app,public) and the GORM postgres dialector for ADK sessions.
+3. `internal/db`: `pgxpool` (schema-qualified SQL, default search_path) and the GORM postgres dialector for ADK sessions.
 4. `internal/agent`: `llmagent.New(...)` with the Gemini model (`model/gemini`), the instruction from `contracts/agent-spec.md`, and two function tools. The runner uses the ADK `session/database` service with `AutoMigrate`.
 5. `internal/mockllm`: implements ADK-Go's model interface per the mock script, including the function-call branch.
 6. A timing decorator that wraps the model to accumulate `model_ms`. Tool and session timing go through wrappers or callbacks.

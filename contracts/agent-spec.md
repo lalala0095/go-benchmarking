@@ -24,7 +24,7 @@
 ### `get_current_time`
 - Description: `Get the current time in an IANA timezone.`
 - Params: `timezone` (string, required). If the zone is unknown, fall back to UTC and set `"note": "unknown timezone, used UTC"`.
-- Result: `{"timezone": str, "iso": str /* RFC 3339 with offset, second precision */}`
+- Result: `{"timezone": str, "iso": str /* RFC 3339 with offset, second precision; UTC is written as `Z` */}`
 
 ## Mock LLM (`mode: "mock"`)
 
@@ -42,9 +42,13 @@ Env: `MOCK_FIRST_TOKEN_DELAY_MS` (250), `MOCK_TOKEN_DELAY_MS` (15), `MOCK_TOKENS
 - After `search_knowledge_base`: `prefix = "Based on [{results[0].source}]: "`, or `"Based on [no results]: "` when empty.
 - Then stream the text answer.
 
-**Streaming a text answer:** wait `FIRST_TOKEN_DELAY`. If `prefix` is non-empty, emit it as the first partial chunk. Then emit `MOCK_TOKENS` partial chunks, chunk `i` (0-based) = `WORDS[i % len(WORDS)] + " "`, waiting `TOKEN_DELAY` **before each** chunk. Finish with a final non-partial response containing the full concatenated text.
+**Streaming a text answer:** sleeps are scheduled against **fixed deadlines** measured from the start of the model call. The first chunk is at `start + FIRST_TOKEN_DELAY`, and token chunk `i` at `start + FIRST_TOKEN_DELAY + (i+1)×TOKEN_DELAY`. This avoids timer drift; don't use cumulative per-token sleeps. Wait `FIRST_TOKEN_DELAY`. If `prefix` is non-empty, emit it as the first partial chunk. Then emit `MOCK_TOKENS` partial chunks, chunk `i` (0-based) = `WORDS[i % len(WORDS)] + " "`, waiting `TOKEN_DELAY` **before each** chunk. Finish with a final non-partial response containing the full concatenated text.
 `WORDS = ["lorem","ipsum","dolor","sit","amet","consectetur","adipiscing","elit","sed","do","eiusmod","tempor","incididunt","ut","labore","et","dolore","magna","aliqua"]`
+
+**Model name:** in mock mode, `meta.model` = `"mock"`.
+
+**Session history mapping:** function-call and function-response events get role `tool`, with `tool` set to the function name.
 
 **Usage metadata:** `input_tokens` = number of whitespace-separated words in the user message. `output_tokens` = `MOCK_TOKENS` (+1 if there's a prefix).
 
-**Expected `model_ms`** for the plain branch is about `250 + 60×15 = 1150 ms`. For tool branches it's about `250 + 250 + 1150 = 1400 ms` (plus nothing for the tool, which is counted in `tool_ms`).
+**Expected `model_ms`** for the plain branch is about `250 + 60×15 = 1150 ms`. For tool branches it's about `250` (the function-call turn) `+ 250 + 60×15` (the answer turn) `= 1400 ms` (plus nothing for the tool, which is counted in `tool_ms`).

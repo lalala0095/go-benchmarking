@@ -1,0 +1,22 @@
+{
+  "name": "go-benchmarking-contract-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Parity / contract suite for go-server and fastapi-server",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/node": "22.18.8",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "yaml": "2.8.1"
+  }
+}

@@ -1,0 +1,31 @@
+# Least privilege: exactly what the dashboard's platform adapter (TRD §8.1)
+# needs, only inside namespace "bench". A Role (not ClusterRole) can never
+# grant anything cluster-wide. Test it:
+#   kubectl auth can-i delete pods -n bench --as=system:serviceaccount:bench:dashboard
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dashboard
+  labels:
+    app.kubernetes.io/name: dashboard
+rules:
+  # list/watch pods for status + readiness; delete = the k8s cold-start scenario.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  # read limits/replicas; patch = rollout restart annotation and manual scaling.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "patch"]
+  # scale-out scenario creates/tunes/removes HPAs on the fly.
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # read-only view of Postgres (limits, readiness) for the platform info panel.
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+  # metrics-server (bundled with k3s): per-pod CPU/memory for Postgres + dashboard.
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]

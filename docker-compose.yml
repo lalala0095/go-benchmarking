@@ -106,6 +106,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./reports:/reports
+    # isOtherStackActive(): probes the k3s API server (host:6443) from inside the container.
+    extra_hosts: ["host.docker.internal:host-gateway"]
     ports: ["127.0.0.1:3000:3000"]
     ulimits:
       nofile: { soft: 65535, hard: 65535 }

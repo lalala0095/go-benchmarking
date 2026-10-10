@@ -1,0 +1,111 @@
+# Postgres as a StatefulSet (not a Deployment): stable identity (postgres-0)
+# and a PersistentVolumeClaim per pod that survives pod deletion. Lab K2.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  serviceName: postgres          # the headless Service in service.yaml
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      # Postgres needs time to checkpoint on SIGTERM; 30 s is the default, be generous.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          # Same flags as the Compose `command:` so both platforms run the same DB.
+          args:
+            - postgres
+            - -c
+            - shared_buffers=512MB
+            - -c
+            - max_connections=200
+            - -c
+            - synchronous_commit=on
+            - -c
+            - random_page_cost=1.1
+            - -c
+            - maintenance_work_mem=256MB
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-credentials, key: POSTGRES_PASSWORD }
+            - name: POSTGRES_DB
+              value: bench
+            # A subdirectory of the volume: initdb refuses a non-empty data dir,
+            # and some provisioners put lost+found at the volume root.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          # Probes use TCP (-h 127.0.0.1) on purpose: during first-boot init the
+          # entrypoint runs a temporary server on the unix socket only, so a
+          # socket check would report "ready" before the init scripts finish.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d dashboard"]
+            periodSeconds: 3
+            failureThreshold: 100     # up to 5 min for initdb + schemas on first boot
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d dashboard"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\""]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 2Gi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: db-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        # Same scripts Compose mounts from ./db/init (copied by sync.sh).
+        # 0755 because the entrypoint only *executes* .sh files that are executable.
+        - name: db-init
+          configMap:
+            name: db-init
+            defaultMode: 0755
+        # Compose's `shm_size: 1g`. Container runtimes give pods only 64 MiB of
+        # /dev/shm; Postgres parallel queries need more. Note: tmpfs pages count
+        # against the container's memory limit.
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+  # One PVC per replica, named data-postgres-0. k3s's local-path provisioner
+  # creates a directory on the node's disk. Deleting the pod keeps the PVC (and
+  # data); deleting the StatefulSet keeps it too. Only `make k8s-reset-db` drops it.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: postgres
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Gi
